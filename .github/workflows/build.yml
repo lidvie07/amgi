@@ -1,0 +1,45 @@
+name: Build Amgi iOS App
+on:
+  workflow_dispatch: # This allows you to run it manually
+
+jobs:
+  build:
+    runs-on: macos-15 # Ensures we get Xcode 16+ as required
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        run: |
+          brew install protobuf swift-protobuf xcodegen
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios-simulator
+
+      - name: Build Rust XCFramework
+        run: ./scripts/build-xcframework.sh
+
+      - name: Generate Protos
+        run: ./scripts/generate-protos.sh
+
+      - name: Generate Xcode Project
+        run: |
+          cd AnkiApp
+          xcodegen generate
+
+      - name: Build Unsigned App
+        run: |
+          cd AnkiApp
+          xcodebuild -project AnkiApp.xcodeproj -scheme AnkiApp -configuration Release -sdk iphoneos CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build -derivedDataPath build_output
+
+      - name: Package into IPA
+        run: |
+          mkdir -p Payload
+          cp -R AnkiApp/build_output/Build/Products/Release-iphoneos/AnkiApp.app Payload/
+          zip -r amgi-unsigned.ipa Payload
+
+      - name: Upload IPA File
+        uses: actions/upload-artifact@v4
+        with:
+          name: amgi-app
+          path: amgi-unsigned.ipa
